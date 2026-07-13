@@ -1,4 +1,5 @@
 using Newtonsoft.Json.Converters;
+using WSOptimizer7.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,8 @@ builder.Services.AddControllers().AddNewtonsoftJson(options =>
 
  // order is vital, this *must* be called *after* AddNewtonsoftJson()
 builder.Services.AddSwaggerGenNewtonsoftSupport();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IEmailTemplateRenderer, EmailTemplateRenderer>();
 
 var app = builder.Build();
 

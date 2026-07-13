@@ -19,6 +19,8 @@
         public string Variable { get; set; }
         public int Posicion { get; set; }
         public string MostrarCliente { get; set; }
+       
+        
 
 
         public List<EtapaResModel> Etapas { get; set; }
