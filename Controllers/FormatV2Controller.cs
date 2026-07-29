@@ -70,11 +70,12 @@ namespace WSOptimizer7.Controllers
                 string fileName = $"{objReq.CvePerfilN}_{timestamp}.EXP";
                 string fullPath = Path.Combine(basePath, fileName);
 
-                using (var writer = new StreamWriter(fullPath, false, Encoding.UTF8))
+                using (var writer = new StreamWriter(fullPath, false, new UTF8Encoding(false)))
                 {
                     foreach (string linea in lineas)
                         writer.WriteLine(linea);
                 }
+
 
                 bool correoEnviado = false;
                 if (GetConfigBool("FormatEmail:Enviar", false))
@@ -570,16 +571,22 @@ namespace WSOptimizer7.Controllers
             {
                 if (variable.Etapas == null)
                     continue;
-
+                
                 foreach (EtapaResModel etapa in variable.Etapas.Where(r => etapasSeleccionadas == null || etapasSeleccionadas.Contains(r.Clave)))
                 {
+                    decimal valor = (decimal)etapa.Valor;
+
+                    decimal valorFormateado = variable.Posicion is 28 or 43
+                        ? Math.Round(valor / 1000m, 6, MidpointRounding.AwayFromZero)
+                        : Math.Round(valor, 2, MidpointRounding.AwayFromZero);
+
                     lista.Add(new TemplateSP
                     {
                         TipoRegistro = 3,
                         CveEtapa = etapa.Clave,
                         Posicion = variable.Posicion,
                         CodigoEtapa = GetCodigoFormulaArchivo(etapa.Clave),
-                        Valor1 = (decimal)etapa.Valor,
+                        Valor1 = valorFormateado,
                         UsaValor1 = true,
                         Valor2 = 0m,
                         UsaValor2 = false,
