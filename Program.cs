@@ -17,6 +17,9 @@ builder.Services.AddControllers().AddNewtonsoftJson(options =>
 builder.Services.AddSwaggerGenNewtonsoftSupport();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IEmailTemplateRenderer, EmailTemplateRenderer>();
+builder.Services.AddScoped<IFormulaCargaParser, FormulaCargaParser>();
+builder.Services.AddScoped<IFormulaReportRenderer, FormulaReportRenderer>();
+builder.Services.AddScoped<IFormulaPdfService, FormulaPdfService>();
 
 var app = builder.Build();
 

@@ -47,6 +47,7 @@ namespace WSOptimizer7.Controllers
             try
             {
                 ValidarRequestBase(objReq);
+                ValidarFlujoTemplate(objReq);
 
                 InicializarCatalogos();
 
@@ -76,15 +77,16 @@ namespace WSOptimizer7.Controllers
                         writer.WriteLine(linea);
                 }
 
-
+                EmailRoutingInfo emailRouting = ResolverEnrutamientoCorreo(objReq.CvePerfilN);
                 bool correoEnviado = false;
                 if (GetConfigBool("FormatEmail:Enviar", false))
                 {
                     try
                     {
-                        await EnviarCorreoFormat(objReq, fullPath);
+                        await EnviarCorreoFormat(objReq, fullPath, emailRouting);
                         correoEnviado = true;
                         ActualizarEstatusFormulas(objReq.CvePerfilN, GetEtapasParaEstatus(etapasSeleccionadas), EstatusEnviado, objReq.UsuAct, idOperacion, "ENVIO_CORREO", "Archivo EXP enviado por correo.");
+                        ActualizarEstatusPerfil(objReq.CvePerfilN, objReq.UsuAct);
                     }
                     catch (Exception exCorreo)
                     {
@@ -106,76 +108,34 @@ namespace WSOptimizer7.Controllers
                     archivo = fileName,
                     ruta = fullPath,
                     correoEnviado,
+                    modoPruebaCorreo = !emailRouting.UsarDestinatariosReales,
+                    usoDestinatariosReales = emailRouting.UsarDestinatariosReales,
+                    destinatariosEnvio = emailRouting.DestinatariosEnvio,
+                    destinatariosRealesCalculados = emailRouting.DestinatariosReales,
                     idOperacion,
                     formulas = formulaResult.Formulas
                 });
             }
-            catch (Exception ex)
+            catch (FormulaBusinessException ex)
             {
-                return BadRequest("Error procesando la solicitud: " + ex);
-            }
-        }
-
-        [HttpPost]
-        [Route("api/template/formulas")]
-        public IActionResult GuardarFormulas([FromBody] TemplateRequestModel objReq)
-        {
-            try
-            {
-                ValidarRequestBase(objReq);
-
-                if (objReq.Etapas == null || objReq.Etapas.Count == 0)
-                    return BadRequest("Debe indicar al menos una etapa para guardar formulas.");
-
-                FormulaOperationResult result = GuardarFormulasSeleccionadas(objReq, Guid.NewGuid());
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest("Error guardando formulas: " + ex);
-            }
-        }
-
-        [HttpPost]
-        [Route("api/template/allix-exp")]
-        public IActionResult GenerarAllixExp([FromBody] TemplateRequestModel objReq)
-        {
-            Guid idOperacion = Guid.NewGuid();
-
-            try
-            {
-                ValidarRequestBase(objReq);
-
-                if (objReq.Etapas == null || objReq.Etapas.Count == 0)
-                    return BadRequest("Debe indicar al menos una etapa para generar archivos Allix EXP.");
-
-                InicializarCatalogos();
-
-                FormulaOperationResult formulaResult = GuardarFormulasSeleccionadas(objReq, idOperacion);
-                dictFormulas = LoadFormulas(objReq.CvePerfilN);
-
-                HashSet<int> etapasSeleccionadas = ParseEtapas(objReq.Etapas) ?? new HashSet<int>();
-                DataTable dtRef = Database.execQuery($"SELECT * FROM OptimizerC_PerfilN_Resultado WHERE CvePerfilN = {objReq.CvePerfilN}");
-
-                if (dtRef == null || dtRef.Rows.Count == 0)
-                    return BadRequest("No se encontraron datos para el perfil solicitado.");
-
-                Dictionary<int, Dictionary<string, decimal>> valoresPorEtapa = GetValoresAllixPorEtapa(dtRef, etapasSeleccionadas);
-                List<AllixExpFileResponse> archivos = GenerarArchivosAllixExp(objReq.CvePerfilN, etapasSeleccionadas, valoresPorEtapa);
-
-                return Ok(new
+                int status = ex.Code is 300 or 301 or 305 ? StatusCodes.Status409Conflict : StatusCodes.Status422UnprocessableEntity;
+                return StatusCode(status, new ApiResult<object>
                 {
-                    mensaje = "Archivos Allix EXP generados correctamente.",
-                    formato = "SGLMIX",
-                    plantilla = GetFullPath(GetConfigValue("AllixExp:TemplatePath", "p.exp")),
-                    idOperacion,
-                    archivos,
-                    formulas = formulaResult.Formulas
+                    Code = ex.Code,
+                    Message = ex.Message,
+                    Data = ex.DataPayload,
+                    TraceId = HttpContext.TraceIdentifier
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest("Error generando archivos Allix EXP: " + ex);
+                return StatusCode(500, new ApiResult<object>
+                {
+                    Code = 9000,
+                    Message = "Ocurrio un error interno procesando la solicitud.",
+                    Data = new { error = ex.Message },
+                    TraceId = HttpContext.TraceIdentifier
+                });
             }
         }
 
@@ -186,6 +146,35 @@ namespace WSOptimizer7.Controllers
 
             if (objReq.CvePerfilN <= 0)
                 throw new Exception("El parÃ¡metro CvePerfilN no es vÃ¡lido.");
+        }
+
+        private static void ValidarFlujoTemplate(TemplateRequestModel objReq)
+        {
+            if (objReq.Etapas == null || objReq.Etapas.Count == 0)
+                throw new FormulaBusinessException(100, "Debe indicar al menos una etapa.");
+            if (objReq.Etapas.Select(p => p.CveEtapa).Distinct().Count() != objReq.Etapas.Count)
+                throw new FormulaBusinessException(100, "El request contiene etapas duplicadas.");
+            if (objReq.Etapas.Any(p => p.CveAccion is not (1 or 2)))
+                throw new FormulaBusinessException(100, "Cada etapa debe indicar cveAccion 1 o 2.");
+            if (objReq.Etapas.Any(p => p.CveEstatus != EstatusPendiente))
+                throw new FormulaBusinessException(301, "Para generar o enviar formulas todas las etapas deben llegar en estatus 1.");
+
+            DataTable actuales = Database.execQuery($"SELECT CveEtapa, CveEstatus FROM OptimizerC_PerfilN_Formulas WHERE CvePerfilN = {objReq.CvePerfilN}");
+            if (actuales.AsEnumerable().Any(p => GetNullableInt(p, "CveEstatus") == EstatusEnviado))
+                throw new FormulaBusinessException(300, "El perfil se encuentra en proceso de formulacion.", new { idPerfil = objReq.CvePerfilN });
+
+            if (actuales.Rows.Count == 0)
+                return;
+
+            if (actuales.AsEnumerable().Any(p => GetNullableInt(p, "CveEstatus") != EstatusPendiente))
+                throw new FormulaBusinessException(301, "El perfil debe iniciar un reproceso antes de volver a generar formulas.", new { idPerfil = objReq.CvePerfilN });
+
+            List<int> esperadas = actuales.AsEnumerable().Select(p => Convert.ToInt32(p["CveEtapa"])).Distinct().OrderBy(p => p).ToList();
+            List<int> recibidas = objReq.Etapas.Select(p => p.CveEtapa).Distinct().OrderBy(p => p).ToList();
+            List<int> faltantes = esperadas.Except(recibidas).ToList();
+            List<int> adicionales = recibidas.Except(esperadas).ToList();
+            if (faltantes.Count > 0 || adicionales.Count > 0)
+                throw new FormulaBusinessException(307, "El request debe contener el conjunto completo de etapas registradas para el proceso.", new { etapasFaltantes = faltantes, etapasNoRegistradas = adicionales, etapasEsperadas = esperadas });
         }
 
         private void InicializarCatalogos()
@@ -244,6 +233,7 @@ namespace WSOptimizer7.Controllers
             HashSet<string> codigosUsados = LoadCodFormulasUsados();
             HashSet<string> formulaColumns = LoadTableColumns("OptimizerC_PerfilN_Formulas");
             HashSet<string> logColumns = LoadTableColumns("OptimizerC_PerfilN_Formulas_Log");
+            var formulasPreparadas = new List<(FormulaEtapaInfo Formula, bool IsInsert)>();
 
             foreach (int cveEtapa in etapasSeleccionadas.OrderBy(p => p))
             {
@@ -253,11 +243,20 @@ namespace WSOptimizer7.Controllers
                 requestEtapas.TryGetValue(cveEtapa, out TemplateEtapaRequestModel? etapaReq);
                 formulasActuales.TryGetValue(cveEtapa, out FormulaEtapaInfo? formulaActual);
 
-                string codFormula = formulaActual?.CodFormula?.Trim() ?? "";
-                if (string.IsNullOrWhiteSpace(codFormula))
-                    codFormula = GenerarCodFormula(codCliente, etapaPerfil, codigosUsados);
+                int cveAccion = etapaReq?.CveAccion ?? formulaActual?.CveAccion ?? 1;
+                string codFormula;
+                if (cveAccion == 2)
+                {
+                    codFormula = GetCodFormulaActual(codCliente, cveEtapa);
+                }
                 else
-                    codigosUsados.Add(codFormula);
+                {
+                    codFormula = formulaActual?.CodFormula?.Trim() ?? "";
+                    if (string.IsNullOrWhiteSpace(codFormula))
+                        codFormula = GenerarCodFormula(codCliente, etapaPerfil, codigosUsados);
+                    else
+                        codigosUsados.Add(codFormula);
+                }
 
                 string codFormulaCarga = formulaActual?.CodFormulaCarga?.Trim() ?? "";
                 int cveEstatus = etapaReq?.CveEstatus ?? formulaActual?.CveEstatus ?? EstatusPendiente;
@@ -268,7 +267,7 @@ namespace WSOptimizer7.Controllers
                     CveEtapa = cveEtapa,
                     CveEtapaFlujo = etapaPerfil.CveEtapaFlujo,
                     NomEtapa = etapaPerfil.NomEtapa,
-                    CveAccion = etapaReq?.CveAccion ?? formulaActual?.CveAccion ?? 1,
+                    CveAccion = cveAccion,
                     Nota = etapaReq?.Nota ?? formulaActual?.Nota ?? "",
                     CodFormula = codFormula,
                     CodFormulaCarga = codFormulaCarga,
@@ -276,10 +275,13 @@ namespace WSOptimizer7.Controllers
                     UsuAct = objReq.UsuAct
                 };
 
-                bool isInsert = formulaActual == null;
+                formulasPreparadas.Add((formula, formulaActual == null));
+            }
+
+            foreach ((FormulaEtapaInfo formula, bool isInsert) in formulasPreparadas)
+            {
                 UpsertFormula(formula, formulaColumns, isInsert);
                 InsertFormulaLog(formula, logColumns, isInsert ? "ALTA" : "ACTUALIZACION", idOperacion);
-
                 result.Formulas.Add(ToFormulaResponse(formula));
             }
 
@@ -293,6 +295,18 @@ namespace WSOptimizer7.Controllers
                 return "";
 
             return GetString(dtPerfil.Rows[0], "CodCliente");
+        }
+
+        private static string GetCodFormulaActual(string codCliente, int cveEtapa)
+        {
+            string sql = "SELECT TOP 1 CodFormula FROM CatNufeed_FormulasActuales " +
+                         "WHERE CveEspecie = 'C' " +
+                         $"AND CodCliente = {SqlNullableLiteral(codCliente)} AND CveEtapa = {cveEtapa}";
+            DataTable dt = Database.execQuery(sql);
+            string codigo = dt.Rows.Count > 0 ? GetString(dt.Rows[0], "CodFormula").Trim() : "";
+            if (string.IsNullOrWhiteSpace(codigo))
+                throw new FormulaBusinessException(306, "No existe una formula actual para actualizar.", new { codCliente, cveEtapa, cveEspecie = "C" });
+            return codigo;
         }
 
         private Dictionary<int, FormulaEtapaInfo> LoadPerfilEtapas(long cvePerfilN, List<int> etapas)
@@ -571,13 +585,13 @@ namespace WSOptimizer7.Controllers
             {
                 if (variable.Etapas == null)
                     continue;
-                
+
                 foreach (EtapaResModel etapa in variable.Etapas.Where(r => etapasSeleccionadas == null || etapasSeleccionadas.Contains(r.Clave)))
                 {
                     decimal valor = (decimal)etapa.Valor;
 
                     decimal valorFormateado = variable.Posicion is 28 or 43
-                        ? Math.Round(valor / 1000m, 6, MidpointRounding.AwayFromZero)
+                        ? Math.Round(valor / 10000m, 6, MidpointRounding.AwayFromZero)
                         : Math.Round(valor, 2, MidpointRounding.AwayFromZero);
 
                     lista.Add(new TemplateSP
@@ -588,7 +602,7 @@ namespace WSOptimizer7.Controllers
                         CodigoEtapa = GetCodigoFormulaArchivo(etapa.Clave),
                         Valor1 = valorFormateado,
                         UsaValor1 = true,
-                        Valor2 = 0m,
+                        Valor2 = (decimal)0.0,
                         UsaValor2 = false,
                         Descripcion = GetNomFormat(variable.NoVariable.ToString(CultureInfo.InvariantCulture))
                     });
@@ -872,7 +886,7 @@ namespace WSOptimizer7.Controllers
 
         private static string FormatAllixDecimal(decimal value)
         {
-            return value.ToString("0.##########", CultureInfo.InvariantCulture);
+            return value.ToString("0.0#########", CultureInfo.InvariantCulture);
         }
 
         private static string GetNombreFormulaAllix(FormulaEtapaInfo formula)
@@ -986,17 +1000,11 @@ namespace WSOptimizer7.Controllers
         {
             if (item.TipoRegistro == 1)
             {
-                string fecha = string.IsNullOrWhiteSpace(item.Fecha)
-                    ? DateTime.Now.ToString("dd/MM/yy", CultureInfo.InvariantCulture)
-                    : item.Fecha;
-
                 return string.Format(
                     CultureInfo.InvariantCulture,
-                    "1,\"{0}\",\"{1}\",\"{2}\",{3},",
+                    "1,\"{0}\",\"{1}\",",
                     EscapeCsvValue(item.CodigoEtapa),
-                    EscapeCsvValue(item.Descripcion),
-                    EscapeCsvValue(fecha),
-                    FormatAllixDecimal(item.Valor1)
+                    EscapeCsvValue(item.Descripcion)
                 );
             }
 
@@ -1008,7 +1016,7 @@ namespace WSOptimizer7.Controllers
 
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0},\"{1}\",{2},{3},{4},{5},\"{6}\"",
+                "{0},\"{1}\",{2},{3},{4},{5},\"{6}\",",
                 item.TipoRegistro,
                 EscapeCsvValue(item.CodigoEtapa),
                 flag1,
@@ -1024,9 +1032,8 @@ namespace WSOptimizer7.Controllers
             return (value ?? "").Replace("\"", "\"\"");
         }
 
-        private async Task EnviarCorreoFormat(TemplateRequestModel objReq, string fullPath)
+        private async Task EnviarCorreoFormat(TemplateRequestModel objReq, string fullPath, EmailRoutingInfo routing)
         {
-            List<string> destinatarios = GetDestinatariosCorreoFormat();
             string subject = GetConfigValue("FormatEmail:Asunto", $"Format Optimizer Cerdos - Perfil {objReq.CvePerfilN}");
 
             string templatePath = GetConfigValue("FormatEmail:TemplatePath", @"Templates\Email\format_optimizer.html");
@@ -1035,16 +1042,55 @@ namespace WSOptimizer7.Controllers
                 { "CvePerfilN", objReq.CvePerfilN.ToString(CultureInfo.InvariantCulture) },
                 { "NombreArchivo", Path.GetFileName(fullPath) },
                 { "RutaArchivo", fullPath },
-                { "FechaGeneracion", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture) }
+                { "FechaGeneracion", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture) },
+                { "ModoEnvio", routing.UsarDestinatariosReales ? "PRODUCTIVO" : "PRUEBA" },
+                { "DestinatariosReales", string.Join("; ", routing.DestinatariosReales) }
             });
 
             await emailService.SendAsync(new EmailMessage
             {
-                To = destinatarios,
+                To = routing.DestinatariosEnvio,
                 Subject = subject,
                 HtmlBody = body,
                 AttachmentPaths = new List<string> { fullPath }
             });
+        }
+
+        private static EmailRoutingInfo ResolverEnrutamientoCorreo(long cvePerfilN)
+        {
+            string sql = "SELECT DISTINCT LTRIM(RTRIM(u.Email)) Email " +
+                         "FROM OptimizerC_PerfilN p " +
+                         "INNER JOIN CatNufeed_Formulador_Cliente fc ON fc.CodCliente = p.CodCliente " +
+                         "INNER JOIN Usuarios u ON u.userId = fc.CveUsuario " +
+                         $"WHERE p.CvePerfilN = {cvePerfilN} AND u.Email IS NOT NULL AND LTRIM(RTRIM(u.Email)) <> ''";
+            List<string> reales = Database.execQuery(sql).AsEnumerable()
+                .Select(p => GetString(p, "Email").Trim())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (reales.Count == 0)
+            {
+                DataTable responsable = Database.execQuery(
+                    "SELECT TOP 1 u.Email FROM Config_Parametros cp " +
+                    "INNER JOIN Usuarios u ON u.userId = TRY_CONVERT(bigint, cp.Valor) " +
+                    "WHERE cp.CvePlataforma = 3 AND cp.CveParametro = 3 AND cp.CveEstatus = 1 " +
+                    "AND u.Email IS NOT NULL AND LTRIM(RTRIM(u.Email)) <> ''");
+                if (responsable.Rows.Count > 0)
+                    reales.Add(GetString(responsable.Rows[0], "Email").Trim());
+            }
+
+            if (reales.Count == 0)
+                throw new FormulaBusinessException(309, "No se encontro correo para los formuladores del cliente ni para el responsable de formulacion.");
+
+            bool usarReales = GetConfigBool("FormatEmail:UsarDestinatariosReales", false);
+            List<string> envio = usarReales ? reales : GetDestinatariosCorreoFormat();
+            return new EmailRoutingInfo
+            {
+                UsarDestinatariosReales = usarReales,
+                DestinatariosReales = reales,
+                DestinatariosEnvio = envio
+            };
         }
 
         private static List<string> GetDestinatariosCorreoFormat()
@@ -1121,6 +1167,23 @@ namespace WSOptimizer7.Controllers
                 formula.UsuAct = usuAct;
                 InsertFormulaLog(formula, logColumns, tipoMovimiento, idOperacion);
             }
+        }
+
+        private static void ActualizarEstatusPerfil(long cvePerfilN, string usuAct)
+        {
+            DataTable dt = Database.execQuery($"SELECT CveEstatus FROM OptimizerC_PerfilN_Formulas WHERE CvePerfilN = {cvePerfilN}");
+            if (dt.Rows.Count == 0)
+                return;
+
+            List<int?> estados = dt.AsEnumerable().Select(p => GetNullableInt(p, "CveEstatus")).ToList();
+            int estatusPerfil = estados.All(p => p == 2) ? 2
+                : estados.All(p => p == 3) ? 4
+                : estados.All(p => p == 4) ? 5
+                : estados.All(p => p == 1) ? 1
+                : 3;
+            Database.execNonQuery("UPDATE OptimizerC_PerfilN SET " +
+                                  $"CveEstatus = {estatusPerfil}, FecAct = GETDATE(), UsuAct = {SqlNullableLong(ParseUsuAct(usuAct))} " +
+                                  $"WHERE CvePerfilN = {cvePerfilN}");
         }
 
         private void RegistrarEventoFormulas(long cvePerfilN, IEnumerable<int> etapas, string usuAct, Guid idOperacion, string tipoMovimiento, string nota)
@@ -1274,6 +1337,13 @@ namespace WSOptimizer7.Controllers
             public long CvePerfilN { get; set; }
             public Guid IdOperacion { get; set; }
             public List<FormulaResponse> Formulas { get; set; } = new List<FormulaResponse>();
+        }
+
+        private class EmailRoutingInfo
+        {
+            public bool UsarDestinatariosReales { get; set; }
+            public List<string> DestinatariosReales { get; set; } = new List<string>();
+            public List<string> DestinatariosEnvio { get; set; } = new List<string>();
         }
 
         private class FormulaResponse
