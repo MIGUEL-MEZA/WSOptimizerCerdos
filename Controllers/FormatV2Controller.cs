@@ -487,9 +487,9 @@ namespace WSOptimizer7.Controllers
                     SqlNullableLiteral(formula.CodFormula),
                     SqlNullableLiteral(formula.CodFormulaCarga),
                     "GETDATE()",
-                    SqlNullableLong(ParseUsuAct(formula.UsuAct)),
+                    SqlNullableLiteral(formula.UsuAct),
                     "GETDATE()",
-                    SqlNullableLong(ParseUsuAct(formula.UsuAct))
+                    SqlNullableLiteral(formula.UsuAct)
                 };
 
                 AddOptionalField(fields, values, columns, "CveEstatus", SqlNullableInt(formula.CveEstatus));
@@ -508,7 +508,7 @@ namespace WSOptimizer7.Controllers
                 $"CodFormula = {SqlNullableLiteral(formula.CodFormula)}",
                 $"CodFormulaCarga = {SqlNullableLiteral(formula.CodFormulaCarga)}",
                 "FecAct = GETDATE()",
-                $"UsuAct = {SqlNullableLong(ParseUsuAct(formula.UsuAct))}"
+                $"UsuAct = {SqlNullableLiteral(formula.UsuAct)}"
             };
 
             if (columns.Contains("CveEstatus"))
@@ -546,7 +546,7 @@ namespace WSOptimizer7.Controllers
                 SqlNullableLiteral(formula.CodFormula),
                 SqlNullableLiteral(formula.CodFormulaCarga),
                 "GETDATE()",
-                SqlNullableLong(ParseUsuAct(formula.UsuAct))
+                SqlNullableLiteral(formula.UsuAct)
             };
 
             AddOptionalField(fields, values, columns, "CveEstatus", SqlNullableInt(formula.CveEstatus));
@@ -1153,7 +1153,7 @@ namespace WSOptimizer7.Controllers
                 if (formulaColumns.Contains("CveEstatus"))
                 {
                     string update = "UPDATE OptimizerC_PerfilN_Formulas SET " +
-                                    $"CveEstatus = {cveEstatus}, FecAct = GETDATE(), UsuAct = {SqlNullableLong(ParseUsuAct(usuAct))} " +
+                                    $"CveEstatus = {cveEstatus}, FecAct = GETDATE(), UsuAct = {SqlNullableLiteral(usuAct)} " +
                                     $"WHERE CvePerfilN = {cvePerfilN} AND CveEtapa = {cveEtapa}";
                     Database.execNonQuery(update);
                 }
@@ -1182,7 +1182,7 @@ namespace WSOptimizer7.Controllers
                 : estados.All(p => p == 1) ? 1
                 : 3;
             Database.execNonQuery("UPDATE OptimizerC_PerfilN SET " +
-                                  $"CveEstatus = {estatusPerfil}, FecAct = GETDATE(), UsuAct = {SqlNullableLong(ParseUsuAct(usuAct))} " +
+                                  $"CveEstatus = {estatusPerfil}, FecAct = GETDATE(), UsuAct = {SqlNullableLiteral(usuAct)} " +
                                   $"WHERE CvePerfilN = {cvePerfilN}");
         }
 
