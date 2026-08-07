@@ -26,24 +26,24 @@ namespace WSOptimizer7.Services
             html.Append("</table>");
 
             html.Append("<h2>Materias primas</h2><table class='data'><thead><tr>");
-            foreach (string encabezado in new[] { "RM code", "Descripcion", "%", "kgs", "LP min", "LP max", "RM cost", "LO cost", "New %", "HI cost", "New %" })
+            foreach (string encabezado in new[] { "RM code", "Descripcion", "%", "kgs"})
                 html.Append($"<th>{E(encabezado)}</th>");
             html.Append("</tr></thead><tbody>");
             foreach (FormulaMateriaPrima materia in formula.MateriasPrimas.OrderBy(p => p.Orden))
             {
                 html.Append("<tr>");
                 html.Append($"<td>{E(materia.RmCode)}</td><td>{E(materia.Descripcion)}</td><td class='num'>{F(materia.Porcentaje)}</td><td class='num'>{F(materia.Kilogramos)}</td>");
-                html.Append("<td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>");
+                html.Append("</tr>");
             }
             html.Append("</tbody></table>");
 
             html.Append("<h2>Nutrient analysis</h2><table class='data'><thead><tr>");
-            foreach (string encabezado in new[] { "Description", "Unit", "LP min", "Actual", "LP max", "Unit Cst", "Low Lev.", "Upp Lev." })
+            foreach (string encabezado in new[] { "Description",  "Actual" })
                 html.Append($"<th>{E(encabezado)}</th>");
             html.Append("</tr></thead><tbody>");
             foreach (FormulaNutriente nutriente in formula.Nutrientes.OrderBy(p => p.Orden))
             {
-                html.Append($"<tr><td>{E(nutriente.Descripcion)}</td><td>{E(nutriente.Unidad)}</td><td></td><td class='num'>{F(nutriente.Actual)}</td><td></td><td></td><td></td><td></td></tr>");
+                html.Append($"<tr><td>{E(nutriente.Descripcion)}</td><td class='num'>{F(nutriente.Actual)}</td></tr>");
             }
             html.Append("</tbody></table></section>");
             return html.ToString();
