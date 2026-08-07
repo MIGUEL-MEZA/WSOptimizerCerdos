@@ -5,17 +5,26 @@ namespace WSOptimizer7.Services
 {
     public class EmailTemplateRenderer : IEmailTemplateRenderer
     {
-        public string RenderFromFile(string templatePath, IDictionary<string, string> values)
+        public string RenderFromFile(string templatePath, IDictionary<string, object> values)
         {
             string resolvedPath = ResolveTemplatePath(templatePath);
             if (!File.Exists(resolvedPath))
                 throw new FileNotFoundException("No se encontro la plantilla HTML de correo.", resolvedPath);
 
             string html = File.ReadAllText(resolvedPath, Encoding.UTF8);
-            foreach (KeyValuePair<string, string> value in values)
+            foreach (KeyValuePair<string, object> value in values)
             {
                 string placeholder = "{{" + value.Key + "}}";
-                html = html.Replace(placeholder, WebUtility.HtmlEncode(value.Value ?? ""));
+
+                // Si es HtmlSafeString, no escapar; de lo contrario, escapar HTML
+                string replacementValue = value.Value switch
+                {
+                    HtmlSafeString safeHtml => safeHtml.Value,
+                    null => "",
+                    _ => WebUtility.HtmlEncode(value.Value.ToString() ?? "")
+                };
+
+                html = html.Replace(placeholder, replacementValue);
             }
 
             return html;

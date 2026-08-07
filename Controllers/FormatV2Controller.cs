@@ -78,12 +78,27 @@ namespace WSOptimizer7.Controllers
                 }
 
                 EmailRoutingInfo emailRouting = ResolverEnrutamientoCorreo(objReq.CvePerfilN);
+
+                // Obtener datos del perfil para enriquecer el email
+                DataTable dtPerfilData = Database.execQuery(
+                    $"SELECT p.FolioR, p.Titulo, p.CodCliente, COALESCE(c.NomClienteA, '') + ' (' + COALESCE(c.NomCliente, '') + ')' AS NombreCliente " +
+                    $"FROM OptimizerC_PerfilN p " +
+                    $"LEFT JOIN Clientes c ON c.CodCliente = p.CodCliente " +
+                    $"WHERE p.CvePerfilN = {objReq.CvePerfilN}");
+
+                // Obtener fórmulas asociadas al perfil
+                DataTable dtFormulas = Database.execQuery(
+                    $"SELECT NomEtapa, CveAccion, CodFormula, Nota " +
+                    $"FROM OptimizerC_PerfilN_Formulas " +
+                    $"WHERE CvePerfilN = {objReq.CvePerfilN} " +
+                    $"ORDER BY CveEtapa");
+
                 bool correoEnviado = false;
                 if (GetConfigBool("FormatEmail:Enviar", false))
                 {
                     try
                     {
-                        await EnviarCorreoFormat(objReq, fullPath, emailRouting);
+                        await EnviarCorreoFormat(objReq, fullPath, emailRouting, dtPerfilData, dtFormulas);
                         correoEnviado = true;
                         ActualizarEstatusFormulas(objReq.CvePerfilN, GetEtapasParaEstatus(etapasSeleccionadas), EstatusEnviado, objReq.UsuAct, idOperacion, "ENVIO_CORREO", "Archivo EXP enviado por correo.");
                         ActualizarEstatusPerfil(objReq.CvePerfilN, objReq.UsuAct);
@@ -1032,19 +1047,102 @@ namespace WSOptimizer7.Controllers
             return (value ?? "").Replace("\"", "\"\"");
         }
 
-        private async Task EnviarCorreoFormat(TemplateRequestModel objReq, string fullPath, EmailRoutingInfo routing)
+        private static string EscapeHtml(string? value)
         {
-            string subject = GetConfigValue("FormatEmail:Asunto", $"Format Optimizer Cerdos - Perfil {objReq.CvePerfilN}");
+            if (string.IsNullOrEmpty(value))
+                return "";
+
+            return value
+                .Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;")
+                .Replace("\"", "&quot;")
+                .Replace("'", "&#39;");
+        }
+
+        private static string TraducirAccion(int cveAccion)
+        {
+            return cveAccion switch
+            {
+                1 => "NUEVA FORMULA",
+                2 => "FORMULA EXISTENTE",
+                3 => "MODIFICADA",
+                4 => "ELIMINADA",
+                _ => "OTRA"
+            };
+        }
+
+        private async Task EnviarCorreoFormat(TemplateRequestModel objReq, string fullPath, EmailRoutingInfo routing, DataTable dtPerfilData, DataTable dtFormulas)
+        {
+            // Extraer datos del perfil
+            string folioR = "";
+            string nombreCliente = "";
+            string titulo = "";
+            if (dtPerfilData != null && dtPerfilData.Rows.Count > 0)
+            {
+                folioR = GetString(dtPerfilData.Rows[0], "FolioR");
+                nombreCliente = GetString(dtPerfilData.Rows[0], "NombreCliente");
+                titulo = GetString(dtPerfilData.Rows[0], "Titulo");
+            }
+
+            // Asunto dinámico con FolioR
+            string subject = $"OPTIMIZER CERDOS -FORMAT- Envío Perfil Nutricional {folioR}";
+
+            // Construir tabla HTML de fórmulas
+            string tablasFormulas = "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\" style=\"border-collapse:collapse;margin-top:12px;border:1px solid #ddd;background:#ffffff;\">";
+            tablasFormulas += "<tr style=\"background:#b8cce8;color:#003d82;font-weight:bold;\">";
+            tablasFormulas += "<td style=\"padding:10px 12px;border-right:1px solid #ddd;font-size:12px;background:#b8cce8;\">ETAPA</td>";
+            tablasFormulas += "<td style=\"padding:10px 12px;border-right:1px solid #ddd;font-size:12px;background:#b8cce8;\">NOMBRE</td>";
+            tablasFormulas += "<td style=\"padding:10px 12px;border-right:1px solid #ddd;font-size:12px;background:#b8cce8;\">ACCIÓN</td>";
+            tablasFormulas += "<td style=\"padding:10px 12px;border-right:1px solid #ddd;font-size:12px;background:#b8cce8;\">CÓDIGO</td>";
+            tablasFormulas += "<td style=\"padding:10px 12px;font-size:12px;background:#b8cce8;\">COMENTARIO</td>";
+            tablasFormulas += "</tr>";
+
+            if (dtFormulas != null && dtFormulas.Rows.Count > 0)
+            {
+                int rowIndex = 0;
+                foreach (DataRow row in dtFormulas.Rows)
+                {
+                    string bgColor = rowIndex % 2 == 0 ? "#f9fafb" : "#ffffff";
+                    string nomEtapa = GetString(row, "NomEtapa");
+                    string cveAccion = GetString(row, "CveAccion");
+                    string codFormula = GetString(row, "CodFormula");
+                    string nota = GetString(row, "Nota");
+
+                    // Traducir CveAccion a nombre legible
+                    string nomAccion = TraducirAccion(int.Parse(cveAccion ?? "0"));
+
+                    tablasFormulas += $"<tr style=\"background:{bgColor};\">";
+                    tablasFormulas += $"<td style=\"padding:10px 12px;border-right:1px solid #ddd;border-bottom:1px solid #e8ecf1;font-size:11px;color:#333;\">{EscapeHtml(nomEtapa)}</td>";
+                    tablasFormulas += $"<td style=\"padding:10px 12px;border-right:1px solid #ddd;border-bottom:1px solid #e8ecf1;font-size:11px;color:#333;\">{EscapeHtml(nomEtapa)}</td>";
+                    tablasFormulas += $"<td style=\"padding:10px 12px;border-right:1px solid #ddd;border-bottom:1px solid #e8ecf1;font-size:11px;color:#333;\">{EscapeHtml(nomAccion)}</td>";
+                    tablasFormulas += $"<td style=\"padding:10px 12px;border-right:1px solid #ddd;border-bottom:1px solid #e8ecf1;font-size:11px;color:#333;font-weight:bold;\">{EscapeHtml(codFormula)}</td>";
+                    tablasFormulas += $"<td style=\"padding:10px 12px;border-bottom:1px solid #e8ecf1;font-size:11px;color:#333;\">{EscapeHtml(nota)}</td>";
+                    tablasFormulas += "</tr>";
+                    rowIndex++;
+                }
+            }
+            else
+            {
+                tablasFormulas += "<tr style=\"background:#ffffff;\">";
+                tablasFormulas += "<td colspan=\"5\" style=\"padding:10px 12px;border-top:1px solid #ddd;font-size:11px;text-align:center;color:#999;\">Sin fórmulas registradas</td>";
+                tablasFormulas += "</tr>";
+            }
+            tablasFormulas += "</table>";
 
             string templatePath = GetConfigValue("FormatEmail:TemplatePath", @"Templates\Email\format_optimizer.html");
-            string body = emailTemplateRenderer.RenderFromFile(templatePath, new Dictionary<string, string>
+            string body = emailTemplateRenderer.RenderFromFile(templatePath, new Dictionary<string, object>
             {
                 { "CvePerfilN", objReq.CvePerfilN.ToString(CultureInfo.InvariantCulture) },
                 { "NombreArchivo", Path.GetFileName(fullPath) },
                 { "RutaArchivo", fullPath },
                 { "FechaGeneracion", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture) },
                 { "ModoEnvio", routing.UsarDestinatariosReales ? "PRODUCTIVO" : "PRUEBA" },
-                { "DestinatariosReales", string.Join("; ", routing.DestinatariosReales) }
+                { "DestinatariosReales", string.Join("; ", routing.DestinatariosReales) },
+                { "FolioR", folioR },
+                { "NombreCliente", nombreCliente },
+                { "Titulo", titulo },
+                { "TablasFormulas", new HtmlSafeString(tablasFormulas) }
             });
 
             await emailService.SendAsync(new EmailMessage

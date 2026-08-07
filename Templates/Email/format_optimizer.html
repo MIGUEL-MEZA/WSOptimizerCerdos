@@ -2,34 +2,72 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Format Optimizer Cerdos</title>
+  <title>NUPTIMIZER - Format Optimizer</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f6f8;padding:24px 0;">
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;color:#333;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f5f5f5;padding:20px 0;">
     <tr>
       <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="width:640px;max-width:94%;background:#ffffff;border:1px solid #dde3ea;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="640" style="width:640px;max-width:94%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.15);">
+          <!-- Header con Logo -->
           <tr>
-            <td style="background:#1f3359;color:#ffffff;padding:18px 24px;font-size:18px;font-weight:bold;">
-              Optimizer Cerdos
+            <td style="background:#003d82;padding:24px;text-align:center;">
+              <img src="https://nukaxan.gponutec.com:8093/Content/Image/logo-nuptimizer.svg" alt="NUPTIMIZER" style="max-width:220px;height:auto;display:inline-block;">
             </td>
           </tr>
+
+          <!-- Datos Perfil Section -->
           <tr>
-            <td style="padding:24px;font-size:14px;line-height:1.55;">
-              <p style="margin:0 0 14px;">Se genero el archivo Format para Optimizer Cerdos.</p>
-              <p style="margin:0 0 8px;"><strong>Perfil:</strong> {{CvePerfilN}}</p>
-              <p style="margin:0 0 8px;"><strong>Archivo:</strong> {{NombreArchivo}}</p>
-              <p style="margin:0 0 18px;"><strong>Fecha de generacion:</strong> {{FechaGeneracion}}</p>
-              <div style="margin:0 0 18px;padding:12px;background:#fff7df;border:1px solid #f0d98a;color:#594a16;">
-                <strong>Modo de envio:</strong> {{ModoEnvio}}<br>
+            <td style="padding:24px;background:#ffffff;">
+              <h2 style="margin:0 0 12px 0;color:#003d82;font-size:13px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">Datos Perfil</h2>
+              <hr style="border:none;border-top:2px solid #003d82;margin:0 0 16px 0;padding:0;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
+                <tr style="background:#ffffff;">
+                  <td style="padding:12px;background:#f0f4f9;border-right:1px solid #ddd;border-bottom:1px solid #ddd;font-weight:bold;color:#555;font-size:12px;width:35%;"><strong>FOLIO:</strong></td>
+                  <td style="padding:12px;color:#333;font-size:12px;background:#ffffff;border-bottom:1px solid #ddd;"><strong>{{FolioR}}</strong></td>
+                </tr>
+                <tr style="background:#ffffff;">
+                  <td style="padding:12px;border-right:1px solid #ddd;border-bottom:1px solid #ddd;font-weight:bold;color:#555;font-size:12px;background:#f0f4f9;"><strong>CLIENTE:</strong></td>
+                  <td style="padding:12px;color:#333;font-size:12px;border-bottom:1px solid #ddd;">{{NombreCliente}}</td>
+                </tr>
+                <tr style="background:#ffffff;">
+                  <td style="padding:12px;border-right:1px solid #ddd;font-weight:bold;color:#555;font-size:12px;background:#f0f4f9;"><strong>TITULO:</strong></td>
+                  <td style="padding:12px;color:#333;font-size:12px;">{{Titulo}}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Datos Formulas Section -->
+          <tr>
+            <td style="padding:24px;background:#ffffff;border-top:1px solid #f0f0f0;">
+              <h2 style="margin:0 0 12px 0;color:#003d82;font-size:13px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">Datos Fórmulas</h2>
+              <hr style="border:none;border-top:2px solid #003d82;margin:0 0 16px 0;padding:0;">
+              {{TablasFormulas}}
+            </td>
+          </tr>
+
+          <!-- Message -->
+          <tr>
+            <td style="padding:16px 24px;background:#ffffff;color:#666;font-size:12px;line-height:1.6;border-bottom:1px solid #ddd;">
+              <p style="margin:0;">Se adjunta el archivo correspondiente para su carga a la plataforma FORMAT.</p>
+            </td>
+          </tr>
+
+          <!-- Info Box -->
+          <tr>
+            <td style="padding:16px 24px;background:#ffffff;">
+              <div style="margin:0;padding:12px;background:#f0f3f7;border-left:4px solid #0055b8;font-size:11px;color:#444;line-height:1.5;">
+                <strong>Modo de envío:</strong> {{ModoEnvio}}<br>
                 <strong>Destinatarios reales calculados:</strong> {{DestinatariosReales}}
               </div>
-              <p style="margin:0;color:#52606d;">El archivo se adjunta en este correo.</p>
             </td>
           </tr>
+
+          <!-- Footer -->
           <tr>
-            <td style="padding:14px 24px;background:#edf1f5;color:#52606d;font-size:12px;">
-              Este es un correo automatico, por favor no responda a este mensaje.
+            <td style="padding:16px 24px;background:#f5f5f5;border-top:1px solid #ddd;text-align:center;font-size:11px;color:#999;">
+              <p style="margin:0;">Este es un correo automático, por favor no responda a este mensaje.</p>
             </td>
           </tr>
         </table>
