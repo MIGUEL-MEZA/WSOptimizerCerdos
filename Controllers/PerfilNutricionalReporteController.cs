@@ -134,44 +134,77 @@ WHERE OPNR.CvePerfilN = " + id;
                 })
                 .ToList();
 
-            List<ReporteCategoriaModel> categorias = variablesVisibles
-                .GroupBy(variable =>
+            List<ReporteCategoriaModel> categorias;
+
+            if (version == 3)
+            {
+                // Para la versión 3 no agrupar por categorías: listar variables en orden
+                categorias = new List<ReporteCategoriaModel>
                 {
-                    VariableReporteConfig config = variablesCatalogo[variable.NoVariable];
-                    return new
+                    new ReporteCategoriaModel
                     {
-                        SinCategoria = config.CveCategoria == null || string.IsNullOrWhiteSpace(config.NomCategoria),
-                        config.CveCategoria,
-                        config.PosicionCategoria,
-                        Nombre = string.IsNullOrWhiteSpace(config.NomCategoria) ? string.Empty : config.NomCategoria!.Trim()
-                    };
-                })
-                .OrderBy(group => group.Key.SinCategoria ? 0 : 1)
-                .ThenBy(group => group.Key.PosicionCategoria ?? int.MaxValue)
-                .ThenBy(group => group.Key.CveCategoria)
-                .ThenBy(group => group.Min(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion))
-                .Select(group => new ReporteCategoriaModel
-                {
-                    SinCategoria = group.Key.SinCategoria,
-                    CveCategoria = group.Key.CveCategoria ?? 0,
-                    Nombre = group.Key.Nombre,
-                    Posicion = group.Key.PosicionCategoria ?? group.Min(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion),
-                    Filas = group
-                        .OrderBy(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion)
-                        .Select(variable => new ReporteFilaModel
-                        {
-                            Variable = variablesCatalogo[variable.NoVariable].NomVariable ?? variable.Variable,
-                            Posicion = variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion,
-                            Decimales = variablesCatalogo[variable.NoVariable].Decimales,
-                            Valores = columnas.Select(columna => new ReporteCeldaModel
+                        SinCategoria = true,
+                        CveCategoria = 0,
+                        Nombre = string.Empty,
+                        Posicion = 0,
+                        Filas = variablesVisibles
+                            .OrderBy(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion)
+                            .Select(variable => new ReporteFilaModel
                             {
-                                ClaveEtapa = columna.Clave,
-                                Valor = variable.Etapas.FirstOrDefault(e => e.Clave == columna.Clave)?.Valor
-                            }).ToList()
-                        })
-                        .ToList()
-                })
-                .ToList();
+                                Variable = variablesCatalogo[variable.NoVariable].NomVariable ?? variable.Variable,
+                                Posicion = variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion,
+                                Decimales = variablesCatalogo[variable.NoVariable].Decimales,
+                                Valores = columnas.Select(columna => new ReporteCeldaModel
+                                {
+                                    ClaveEtapa = columna.Clave,
+                                    Valor = variable.Etapas.FirstOrDefault(e => e.Clave == columna.Clave)?.Valor
+                                }).ToList()
+                            })
+                            .ToList()
+                    }
+                };
+            }
+            else
+            {
+                categorias = variablesVisibles
+                    .GroupBy(variable =>
+                    {
+                        VariableReporteConfig config = variablesCatalogo[variable.NoVariable];
+                        return new
+                        {
+                            SinCategoria = config.CveCategoria == null || string.IsNullOrWhiteSpace(config.NomCategoria),
+                            config.CveCategoria,
+                            config.PosicionCategoria,
+                            Nombre = string.IsNullOrWhiteSpace(config.NomCategoria) ? string.Empty : config.NomCategoria!.Trim()
+                        };
+                    })
+                    .OrderBy(group => group.Key.SinCategoria ? 0 : 1)
+                    .ThenBy(group => group.Key.PosicionCategoria ?? int.MaxValue)
+                    .ThenBy(group => group.Key.CveCategoria)
+                    .ThenBy(group => group.Min(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion))
+                    .Select(group => new ReporteCategoriaModel
+                    {
+                        SinCategoria = group.Key.SinCategoria,
+                        CveCategoria = group.Key.CveCategoria ?? 0,
+                        Nombre = group.Key.Nombre,
+                        Posicion = group.Key.PosicionCategoria ?? group.Min(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion),
+                        Filas = group
+                            .OrderBy(variable => variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion)
+                            .Select(variable => new ReporteFilaModel
+                            {
+                                Variable = variablesCatalogo[variable.NoVariable].NomVariable ?? variable.Variable,
+                                Posicion = variablesCatalogo[variable.NoVariable].Posicion ?? variable.Posicion,
+                                Decimales = variablesCatalogo[variable.NoVariable].Decimales,
+                                Valores = columnas.Select(columna => new ReporteCeldaModel
+                                {
+                                    ClaveEtapa = columna.Clave,
+                                    Valor = variable.Etapas.FirstOrDefault(e => e.Clave == columna.Clave)?.Valor
+                                }).ToList()
+                            })
+                            .ToList()
+                    })
+                    .ToList();
+            }
 
             return new ReportePerfilModel
             {
@@ -537,10 +570,14 @@ WHERE TABLE_NAME = '{tableName}'
                 .ThenBy(c => c.Posicion)
                 .ThenBy(c => c.CveCategoria))
             {
-                worksheet.Range(currentRow, 1, currentRow, lastColumn).Merge();
-                worksheet.Cell(currentRow, 1).Value = categoria.Nombre;
-                ApplyCategoryRowStyle(worksheet.Range(currentRow, 1, currentRow, lastColumn));
-                currentRow++;
+                // Si la categoria no tiene nombre y es 'SinCategoria', no pintar la fila de encabezado
+                if (!(categoria.SinCategoria && string.IsNullOrWhiteSpace(categoria.Nombre)))
+                {
+                    worksheet.Range(currentRow, 1, currentRow, lastColumn).Merge();
+                    worksheet.Cell(currentRow, 1).Value = categoria.Nombre;
+                    ApplyCategoryRowStyle(worksheet.Range(currentRow, 1, currentRow, lastColumn));
+                    currentRow++;
+                }
 
                 foreach (ReporteFilaModel fila in categoria.Filas.OrderBy(f => f.Posicion))
                 {
