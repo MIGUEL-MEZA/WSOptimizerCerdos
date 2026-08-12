@@ -806,11 +806,15 @@ WHERE TABLE_NAME = '{tableName}'
                 .ThenBy(c => c.Posicion)
                 .ThenBy(c => c.CveCategoria))
             {
-                builder.Append("<tr>");
-                builder.Append($"<td colspan=\"{reporte.Columnas.Count + 1}\" style=\"border: solid 1px #d6deed; background-color: #dce9f5; padding: 4px 8px;\">");
-                builder.Append($"<Label style=\"font-family:Helvetica;font-size:8pt;font-weight:bold;color:#1f2937;\">{EscapeHtml(categoria.Nombre)}</Label>");
-                builder.Append("</td>");
-                builder.Append("</tr>");
+                // Omitir encabezado si la categoria es 'SinCategoria' y no tiene nombre (caso versionReporte = 3)
+                if (!(categoria.SinCategoria && string.IsNullOrWhiteSpace(categoria.Nombre)))
+                {
+                    builder.Append("<tr>");
+                    builder.Append($"<td colspan=\"{reporte.Columnas.Count + 1}\" style=\"border: solid 1px #d6deed; background-color: #dce9f5; padding: 4px 8px;\">");
+                    builder.Append($"<Label style=\"font-family:Helvetica;font-size:8pt;font-weight:bold;color:#1f2937;\">{EscapeHtml(categoria.Nombre)}</Label>");
+                    builder.Append("</td>");
+                    builder.Append("</tr>");
+                }
 
                 foreach (ReporteFilaModel fila in categoria.Filas.OrderBy(f => f.Posicion))
                 {
