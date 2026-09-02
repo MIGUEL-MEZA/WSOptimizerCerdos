@@ -37,24 +37,12 @@
     </None>
   </ItemGroup>
 
+
   <ItemGroup>
-    <None Update="Diseno\icono_cerdo_off.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Diseno\icono_cerdo_off.svg">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Diseno\Logo_GrupoNutec.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Diseno\Logo_Nuptimizer.svg">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Diseno\Nuptimizer_Cerdos-PerfilNutricional.pdf">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Diseno\Nuptimizer_Cerdos-PerfilNutricional.xlsx">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    <!-- Todo el contenido de Diseno se copia al publicar: antes se listaba archivo por
+         archivo y los iconos que no estaban en la lista no llegaban al servidor -->
+    <None Update="Diseno\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

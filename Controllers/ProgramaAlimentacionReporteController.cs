@@ -894,18 +894,40 @@ namespace WSOptimizer7.Controllers
             return startRow;
         }
 
+        // Deshace cualquier combinacion que cruce el rango indicado, para que las nuevas
+        // no queden traslapadas con las que trae la plantilla.
+        private static void UnmergeHeaderRange(IXLWorksheet worksheet, int firstRow, int lastRow, int firstColumn, int lastColumn)
+        {
+            foreach (IXLRange mergedRange in worksheet.MergedRanges
+                .Where(range => range.FirstRow().RowNumber() <= lastRow
+                    && range.LastRow().RowNumber() >= firstRow
+                    && range.FirstColumn().ColumnNumber() <= lastColumn
+                    && range.LastColumn().ColumnNumber() >= firstColumn)
+                .ToList())
+            {
+                mergedRange.Unmerge();
+            }
+        }
+
         private static void BuildExcelHeader(IXLWorksheet worksheet, ProgramaReporteModel reporte, string titulo, int lastColumn)
         {
-            worksheet.Range(1, 2, 2, 6).Clear(XLClearOptions.Contents);
-            worksheet.Range(1, 2, 1, 6).Merge();
-            worksheet.Range(2, 2, 2, 6).Merge();
+            // La plantilla trae la banda partida en bloques combinados: combinar encima
+            // sin deshacerlos primero deja rangos traslapados y Excel abre el archivo
+            // pidiendo repararlo.
+            UnmergeHeaderRange(worksheet, 1, 3, 1, lastColumn);
+
+            // Se limpia desde la columna 1: la plantilla trae contenido quemado en los
+            // extremos de la banda.
+            worksheet.Range(1, 1, 2, lastColumn).Clear(XLClearOptions.Contents);
+            worksheet.Range(1, 1, 1, lastColumn).Merge();
+            worksheet.Range(2, 1, 2, lastColumn).Merge();
 
             ApplyExcelHeaderBandStyle(worksheet, lastColumn);
             ApplyExcelSpacerRowStyle(worksheet, lastColumn);
 
-            worksheet.Cell(1, 2).Value = titulo;
-            ApplyExcelHeaderTitleStyle(worksheet.Cell(1, 2));
-            ApplyExcelHeaderDetail(worksheet.Cell(2, 2), reporte);
+            worksheet.Cell(1, 1).Value = titulo;
+            ApplyExcelHeaderTitleStyle(worksheet.Cell(1, 1));
+            ApplyExcelHeaderDetail(worksheet.Cell(2, 1), reporte);
 
             worksheet.Row(1).Height = Math.Max(worksheet.Row(1).Height, 34d);
             worksheet.Row(2).Height = Math.Max(worksheet.Row(2).Height, 40d);
@@ -1026,7 +1048,7 @@ namespace WSOptimizer7.Controllers
             builder.AppendLine("<!DOCTYPE html>");
             builder.AppendLine("<html><head><meta charset=\"utf-8\" />");
             builder.AppendLine("<style>");
-            builder.AppendLine("body{font-family:Helvetica,Arial,sans-serif;font-size:10pt;color:#1f2937;margin:0;padding:10px;}");
+            builder.AppendLine("body{font-family:Helvetica,Arial,sans-serif;font-size:10pt;color:#1f2937;margin:0;padding:10px 10px 0 10px;}");
             builder.AppendLine("table{width:100%;border-collapse:collapse;margin-bottom:18px;}");
             builder.AppendLine("thead{display:table-header-group;}");
             builder.AppendLine("tfoot{display:table-row-group;}");
@@ -1040,6 +1062,10 @@ namespace WSOptimizer7.Controllers
             builder.AppendLine(".summary td{text-align:left;line-height:1.35;background:#eef2f8;}");
             builder.AppendLine(".summary .label{font-weight:bold;}");
             builder.AppendLine(".section-block{page-break-inside:avoid;break-inside:avoid-page;margin-bottom:18px;}");
+            // El aire que queda debajo del ultimo bloque desborda la pagina y ExpertPdf
+            // agrega una hoja mas con solo el encabezado.
+            builder.AppendLine("body > *:last-child{margin-bottom:0;}");
+            builder.AppendLine("body > *:last-child table:last-child{margin-bottom:0;}");
             builder.AppendLine("</style></head><body>");
 
             if (string.Equals(reporte.Seccion, "comparativo", StringComparison.OrdinalIgnoreCase))

@@ -418,6 +418,7 @@ WHERE TABLE_NAME = '{tableName}'
             FillExcelHeader(worksheet, reporte);
             FillExcelColumns(worksheet, reporte);
             FillExcelRows(worksheet, reporte);
+            ClearExcelTemplateExcess(worksheet, GetExcelLastColumn(reporte));
 
             using MemoryStream stream = new MemoryStream();
             workbook.SaveAs(stream);
@@ -487,27 +488,54 @@ WHERE TABLE_NAME = '{tableName}'
             }
         }
 
+        // Ancho real del reporte: la columna de etiquetas mas una por etapa. Antes se
+        // forzaba un minimo (9 en la banda, 7 en la tabla) y con pocas etapas la banda
+        // azul y las celdas vacias sobresalian por la derecha de la tabla.
+        private static int GetExcelLastColumn(ReportePerfilModel reporte)
+        {
+            return Math.Max(reporte.Columnas.Count + 1, 2);
+        }
+
+        // La plantilla trae la banda y la tabla dibujadas a un ancho fijo: lo que queda a
+        // la derecha del ancho real se borra para que no sobren fondos ni bordes.
+        private static void ClearExcelTemplateExcess(IXLWorksheet worksheet, int lastColumn)
+        {
+            IXLRow ultimaFila = worksheet.LastRowUsed();
+            if (ultimaFila == null)
+                return;
+
+            // Se limpia con holgura: LastColumnUsed() no reporta los bloques combinados
+            // vacios que la plantilla deja a la derecha (p.ej. G1:H2 en aves).
+            IXLColumn ultimaColumna = worksheet.LastColumnUsed();
+            int ancho = Math.Max(ultimaColumna == null ? 0 : ultimaColumna.ColumnNumber(), lastColumn + 8);
+
+            // Clear() no deshace las combinaciones: hay que quitarlas aparte.
+            UnmergeHeaderRange(worksheet, 1, ultimaFila.RowNumber(), lastColumn + 1, ancho);
+            worksheet.Range(1, lastColumn + 1, ultimaFila.RowNumber(), ancho).Clear();
+        }
+
         private void FillExcelHeader(IXLWorksheet worksheet, ReportePerfilModel reporte)
         {
-            int lastColumn = Math.Max(reporte.Columnas.Count + 1, 9);
-            int rightLogoStartColumn = Math.Max(lastColumn - 2, 6);
-            int lastTextColumn = Math.Max(2, rightLogoStartColumn - 1);
+            int lastColumn = GetExcelLastColumn(reporte);
 
-            //UnmergeHeaderRangeIfNeeded(worksheet, 1, 1, lastColumn);
-            //UnmergeHeaderRangeIfNeeded(worksheet, 2, 1, lastColumn);
-            //UnmergeHeaderRangeIfNeeded(worksheet, 3, 1, lastColumn);
+            // La plantilla trae la banda partida en bloques combinados (A1:B1, C1:D1...).
+            // Combinar encima sin deshacerlos primero deja rangos traslapados y Excel abre
+            // el archivo pidiendo repararlo.
+            UnmergeHeaderRange(worksheet, 1, 3, 1, lastColumn);
 
-            worksheet.Range(1, 2, 2, 6).Clear(XLClearOptions.Contents);
+            // Se limpia desde la columna 1: la plantilla trae el titulo y la fecha de
+            // emision quemados en los extremos de la banda.
+            worksheet.Range(1, 1, 2, lastColumn).Clear(XLClearOptions.Contents);
 
-            worksheet.Range(1, 2, 1, 6).Merge();
-            worksheet.Range(2, 2, 2, 6).Merge();
+            worksheet.Range(1, 1, 1, lastColumn).Merge();
+            worksheet.Range(2, 1, 2, lastColumn).Merge();
 
             ApplyExcelHeaderBandStyle(worksheet, lastColumn);
             ApplyExcelSpacerRowStyle(worksheet, lastColumn);
 
-            worksheet.Cell(1, 2).Value = "PERFIL NUTRICIONAL";
-            ApplyExcelHeaderTitleStyle(worksheet.Cell(1, 2));
-            ApplyExcelHeaderDetail(worksheet.Cell(2, 2), reporte);
+            worksheet.Cell(1, 1).Value = "PERFIL NUTRICIONAL";
+            ApplyExcelHeaderTitleStyle(worksheet.Cell(1, 1));
+            ApplyExcelHeaderDetail(worksheet.Cell(2, 1), reporte);
 
             worksheet.Row(1).Height = Math.Max(worksheet.Row(1).Height, 34d);
             worksheet.Row(2).Height = Math.Max(worksheet.Row(2).Height, 40d);
@@ -519,7 +547,7 @@ WHERE TABLE_NAME = '{tableName}'
         {
             worksheet.Cell(ExcelHeaderRow, 1).Value = string.Empty;
 
-            int lastColumn = Math.Max(reporte.Columnas.Count + 1, 7);
+            int lastColumn = GetExcelLastColumn(reporte);
             for (int columnIndex = 2; columnIndex <= lastColumn; columnIndex++)
             {
                 worksheet.Cell(ExcelHeaderRow, columnIndex).Clear(XLClearOptions.Contents);
@@ -535,10 +563,6 @@ WHERE TABLE_NAME = '{tableName}'
                     worksheet.Cell(ExcelHeaderRow, columnIndex), ExcelDarkBlue);
             }
 
-            for (int columnIndex = reporte.Columnas.Count + 2; columnIndex <= lastColumn; columnIndex++)
-            {
-                ApplyStageHeaderStyle(worksheet.Cell(ExcelHeaderRow, columnIndex), ExcelDarkBlue);
-            }
         }
 
         private void FillExcelRows(IXLWorksheet worksheet, ReportePerfilModel reporte)
@@ -546,7 +570,7 @@ WHERE TABLE_NAME = '{tableName}'
             int totalRows = GetTotalExcelBodyRows(reporte);
             EnsureExcelBodyCapacity(worksheet, totalRows);
 
-            int lastColumn = Math.Max(reporte.Columnas.Count + 1, 7);
+            int lastColumn = GetExcelLastColumn(reporte);
             int lastRowToClear = Math.Max(ExcelTemplateBodyEndRow, ExcelBodyStartRow + totalRows - 1);
             for (int rowIndex = ExcelBodyStartRow; rowIndex <= lastRowToClear; rowIndex++)
             {
@@ -756,13 +780,16 @@ WHERE TABLE_NAME = '{tableName}'
             cell.Style.Border.InsideBorderColor = ExcelGridBlue;
         }
 
-        private static void UnmergeHeaderRangeIfNeeded(IXLWorksheet worksheet, int row, int startColumn, int endColumn)
+        // Deshace cualquier combinacion que cruce el rango indicado. La version anterior
+        // solo veia las combinaciones contenidas en una sola fila, asi que dejaba pasar
+        // las que abarcan dos filas y terminaban traslapadas con las nuevas.
+        private static void UnmergeHeaderRange(IXLWorksheet worksheet, int firstRow, int lastRow, int firstColumn, int lastColumn)
         {
             foreach (IXLRange mergedRange in worksheet.MergedRanges
-                .Where(range => range.FirstRow().RowNumber() == row
-                    && range.LastRow().RowNumber() == row
-                    && range.FirstColumn().ColumnNumber() >= startColumn
-                    && range.LastColumn().ColumnNumber() <= endColumn)
+                .Where(range => range.FirstRow().RowNumber() <= lastRow
+                    && range.LastRow().RowNumber() >= firstRow
+                    && range.FirstColumn().ColumnNumber() <= lastColumn
+                    && range.LastColumn().ColumnNumber() >= firstColumn)
                 .ToList())
             {
                 mergedRange.Unmerge();

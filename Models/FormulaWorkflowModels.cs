@@ -27,7 +27,7 @@ namespace WSOptimizer7.Models
     {
         public int NumeroProceso { get; set; }
         public DateTime FechaCarga { get; set; }
-        public long? UsuarioCarga { get; set; }
+        public string? UsuarioCarga { get; set; }
         public int? EstatusFinalPerfil { get; set; }
         public List<FormulaCargaEtapa> Etapas { get; set; } = new();
     }
@@ -82,7 +82,7 @@ namespace WSOptimizer7.Models
         public string Titulo { get; set; } = "";
         public int? Estatus { get; set; }
         public DateTime? Fecha { get; set; }
-        public long? Usuario { get; set; }
+        public string? Usuario { get; set; }
         public int CantidadFormulas { get; set; }
     }
 

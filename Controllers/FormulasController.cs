@@ -110,7 +110,7 @@ namespace WSOptimizer7.Controllers
                         etapa.Nombre = GetString(row, "NomEtapa");
                 }
 
-                long? usuario = ParseLong(request.UsuAct);
+                string? usuario = NormalizaUsuario(request.UsuAct);
                 FormulaCargaDocumento documento = LoadDocumento(idPerfil) ?? new FormulaCargaDocumento();
                 int siguienteProceso = documento.Procesos.Count == 0 ? 1 : documento.Procesos.Max(p => p.NumeroProceso) + 1;
                 documento.Version = Math.Max(documento.Version, 1);
@@ -127,11 +127,11 @@ namespace WSOptimizer7.Controllers
                 var statements = new List<string>
                 {
                     "IF EXISTS (SELECT 1 FROM OptimizerC_PerfilN_Formulas_Carga WHERE CvePerfilN = " + idPerfil + ") " +
-                    "UPDATE OptimizerC_PerfilN_Formulas_Carga SET ContenidoJson = " + SqlUnicodeLiteral(json) + ", FecAct = GETDATE(), UsuAct = " + SqlLong(usuario) + " WHERE CvePerfilN = " + idPerfil + " " +
-                    "ELSE INSERT INTO OptimizerC_PerfilN_Formulas_Carga (CvePerfilN, ContenidoJson, FecAlta, UsuAlta, FecAct, UsuAct) VALUES (" + idPerfil + ", " + SqlUnicodeLiteral(json) + ", GETDATE(), " + SqlLong(usuario) + ", GETDATE(), " + SqlLong(usuario) + ")"
+                    "UPDATE OptimizerC_PerfilN_Formulas_Carga SET ContenidoJson = " + SqlUnicodeLiteral(json) + ", FecAct = GETDATE(), UsuAct = " + SqlNullableLiteral(usuario) + " WHERE CvePerfilN = " + idPerfil + " " +
+                    "ELSE INSERT INTO OptimizerC_PerfilN_Formulas_Carga (CvePerfilN, ContenidoJson, FecAlta, UsuAlta, FecAct, UsuAct) VALUES (" + idPerfil + ", " + SqlUnicodeLiteral(json) + ", GETDATE(), " + SqlNullableLiteral(usuario) + ", GETDATE(), " + SqlNullableLiteral(usuario) + ")"
                 };
                 statements.AddRange(cargadas.Select(p =>
-                    "UPDATE OptimizerC_PerfilN_Formulas SET CodFormulaCarga = " + SqlLiteral(p.CodFormulaCarga) + ", FecAct = GETDATE(), UsuAct = " + SqlLong(usuario) +
+                    "UPDATE OptimizerC_PerfilN_Formulas SET CodFormulaCarga = " + SqlLiteral(p.CodFormulaCarga) + ", FecAct = GETDATE(), UsuAct = " + SqlNullableLiteral(usuario) +
                     " WHERE CvePerfilN = " + idPerfil + " AND CveEtapa = " + p.CveEtapa));
                 ExecuteTransaction(statements);
 
@@ -153,7 +153,7 @@ namespace WSOptimizer7.Controllers
             [FromQuery] long? idPerfil,
             [FromQuery] DateTime? fechaInicio,
             [FromQuery] DateTime? fechaFin,
-            [FromQuery] long? usuario,
+            [FromQuery] string? usuario,
             [FromQuery] int? estatus,
             [FromQuery] int pagina = 1,
             [FromQuery] int tamanoPagina = 25)
@@ -167,7 +167,7 @@ namespace WSOptimizer7.Controllers
                 if (idPerfil.HasValue) filtros.Add("p.CvePerfilN = " + idPerfil.Value);
                 if (fechaInicio.HasValue) filtros.Add("p.FecAct >= " + SqlLiteral(fechaInicio.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
                 if (fechaFin.HasValue) filtros.Add("p.FecAct < DATEADD(day, 1, " + SqlLiteral(fechaFin.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)) + ")");
-                if (usuario.HasValue) filtros.Add("p.UsuAct = " + usuario.Value);
+                if (!string.IsNullOrWhiteSpace(usuario)) filtros.Add("p.UsuAct = " + SqlLiteral(usuario));
                 if (estatus.HasValue) filtros.Add("p.CveEstatus = " + estatus.Value);
 
                 int offset = (pagina - 1) * tamanoPagina;
@@ -290,15 +290,15 @@ namespace WSOptimizer7.Controllers
                     ? 4
                     : request.Etapas.All(p => p.CveEstatus == FormulaRechazada) ? 5 : 3;
                 Guid operacion = Guid.NewGuid();
-                long? usuario = ParseLong(request.UsuAct);
+                string? usuario = NormalizaUsuario(request.UsuAct);
                 var statements = new List<string>();
                 foreach (TemplateEtapaRequestModel etapa in request.Etapas)
                 {
                     DataRow actual = dtActuales.AsEnumerable().Single(p => Convert.ToInt32(p["CveEtapa"]) == etapa.CveEtapa);
-                    statements.Add("UPDATE OptimizerC_PerfilN_Formulas SET CveEstatus = " + etapa.CveEstatus + ", Nota = " + SqlNullableLiteral(etapa.Nota) + ", FecAct = GETDATE(), UsuAct = " + SqlLong(usuario) + $" WHERE CvePerfilN = {idPerfil} AND CveEtapa = {etapa.CveEtapa}");
+                    statements.Add("UPDATE OptimizerC_PerfilN_Formulas SET CveEstatus = " + etapa.CveEstatus + ", Nota = " + SqlNullableLiteral(etapa.Nota) + ", FecAct = GETDATE(), UsuAct = " + SqlNullableLiteral(usuario) + $" WHERE CvePerfilN = {idPerfil} AND CveEtapa = {etapa.CveEtapa}");
                     statements.Add(BuildLogInsert(actual, etapa.CveEstatus, etapa.Nota, usuario, operacion, "DICTAMEN"));
                 }
-                statements.Add($"UPDATE OptimizerC_PerfilN SET CveEstatus = {perfilEstatus}, FecAct = GETDATE(), UsuAct = {SqlLong(usuario)} WHERE CvePerfilN = {idPerfil}");
+                statements.Add($"UPDATE OptimizerC_PerfilN SET CveEstatus = {perfilEstatus}, FecAct = GETDATE(), UsuAct = {SqlNullableLiteral(usuario)} WHERE CvePerfilN = {idPerfil}");
                 ExecuteTransaction(statements);
 
                 bool correoEnviado = false;
@@ -353,16 +353,16 @@ namespace WSOptimizer7.Controllers
                     throw new FormulaBusinessException(100, "Cada etapa debe indicar cveAccion 1 o 2.");
 
                 Guid operacion = Guid.NewGuid();
-                long? usuario = ParseLong(request.UsuAct);
+                string? usuario = NormalizaUsuario(request.UsuAct);
                 var statements = new List<string>();
                 foreach (TemplateEtapaRequestModel etapa in request.Etapas)
                 {
                     DataRow actual = dtActuales.AsEnumerable().Single(p => Convert.ToInt32(p["CveEtapa"]) == etapa.CveEtapa);
                     statements.Add(BuildLogInsert(actual, GetNullableInt(actual, "CveEstatus"), GetString(actual, "Nota"), usuario, operacion, "INICIO_REPROCESO"));
                     string codigo = etapa.CveAccion == 1 ? "NULL" : "CodFormula";
-                    statements.Add("UPDATE OptimizerC_PerfilN_Formulas SET CveAccion = " + etapa.CveAccion + ", CveEstatus = 1, Nota = " + SqlNullableLiteral(etapa.Nota) + ", CodFormula = " + codigo + ", CodFormulaCarga = NULL, FecAct = GETDATE(), UsuAct = " + SqlLong(usuario) + $" WHERE CvePerfilN = {idPerfil} AND CveEtapa = {etapa.CveEtapa}");
+                    statements.Add("UPDATE OptimizerC_PerfilN_Formulas SET CveAccion = " + etapa.CveAccion + ", CveEstatus = 1, Nota = " + SqlNullableLiteral(etapa.Nota) + ", CodFormula = " + codigo + ", CodFormulaCarga = NULL, FecAct = GETDATE(), UsuAct = " + SqlNullableLiteral(usuario) + $" WHERE CvePerfilN = {idPerfil} AND CveEtapa = {etapa.CveEtapa}");
                 }
-                statements.Add($"UPDATE OptimizerC_PerfilN SET CveEstatus = 1, FecAct = GETDATE(), UsuAct = {SqlLong(usuario)} WHERE CvePerfilN = {idPerfil}");
+                statements.Add($"UPDATE OptimizerC_PerfilN SET CveEstatus = 1, FecAct = GETDATE(), UsuAct = {SqlNullableLiteral(usuario)} WHERE CvePerfilN = {idPerfil}");
                 ExecuteTransaction(statements);
                 return OkResult("El perfil quedo listo para reproceso.", new { idPerfil, estatusPerfil = 1, idOperacion = operacion });
             }
@@ -426,7 +426,7 @@ namespace WSOptimizer7.Controllers
                 Titulo = GetString(row, "Titulo"),
                 Estatus = GetNullableInt(row, "CveEstatus"),
                 Fecha = GetNullableDate(row, "FecAct"),
-                Usuario = GetNullableLong(row, "UsuAct"),
+                Usuario = GetString(row, "UsuAct"),
                 CantidadFormulas = GetNullableInt(row, "CantidadFormulas") ?? 0
             }).ToList();
         }
@@ -446,10 +446,10 @@ namespace WSOptimizer7.Controllers
                 throw new FormulaBusinessException(308, "El request contiene etapas no registradas.", new { etapasNoRegistradas = adicionales, etapasEsperadas = expected });
         }
 
-        private static string BuildLogInsert(DataRow actual, int? estatus, string nota, long? usuario, Guid operacion, string movimiento)
+        private static string BuildLogInsert(DataRow actual, int? estatus, string nota, string? usuario, Guid operacion, string movimiento)
         {
             return "INSERT INTO OptimizerC_PerfilN_Formulas_Log (CvePerfilN, CveEtapa, CveEtapaFlujo, NomEtapa, CveAccion, Nota, CodFormula, CodFormulaCarga, CveEstatus, TipoMovimiento, IdOperacion, FecAct, UsuAct) VALUES (" +
-                   Convert.ToInt64(actual["CvePerfilN"], CultureInfo.InvariantCulture) + "," + Convert.ToInt32(actual["CveEtapa"], CultureInfo.InvariantCulture) + "," + SqlInt(GetNullableInt(actual, "CveEtapaFlujo")) + "," + SqlNullableLiteral(GetString(actual, "NomEtapa")) + "," + SqlInt(GetNullableInt(actual, "CveAccion")) + "," + SqlNullableLiteral(nota) + "," + SqlNullableLiteral(GetString(actual, "CodFormula")) + "," + SqlNullableLiteral(GetString(actual, "CodFormulaCarga")) + "," + SqlInt(estatus) + "," + SqlLiteral(movimiento) + "," + SqlLiteral(operacion.ToString()) + ",GETDATE()," + SqlLong(usuario) + ")";
+                   Convert.ToInt64(actual["CvePerfilN"], CultureInfo.InvariantCulture) + "," + Convert.ToInt32(actual["CveEtapa"], CultureInfo.InvariantCulture) + "," + SqlInt(GetNullableInt(actual, "CveEtapaFlujo")) + "," + SqlNullableLiteral(GetString(actual, "NomEtapa")) + "," + SqlInt(GetNullableInt(actual, "CveAccion")) + "," + SqlNullableLiteral(nota) + "," + SqlNullableLiteral(GetString(actual, "CodFormula")) + "," + SqlNullableLiteral(GetString(actual, "CodFormulaCarga")) + "," + SqlInt(estatus) + "," + SqlLiteral(movimiento) + "," + SqlLiteral(operacion.ToString()) + ",GETDATE()," + SqlNullableLiteral(usuario) + ")";
         }
 
         private static void ExecuteTransaction(IEnumerable<string> statements)
@@ -488,7 +488,8 @@ namespace WSOptimizer7.Controllers
             if (string.IsNullOrWhiteSpace(result)) throw new FormulaBusinessException(100, $"{name} es obligatorio.");
             return result;
         }
-        private static long? ParseLong(string? value) => long.TryParse(new string((value ?? "").Where(char.IsDigit).ToArray()), out long result) ? result : null;
+        // El usuario es alfanumerico (columnas UsuAct/UsuAlta varchar), no debe convertirse a numero
+        private static string? NormalizaUsuario(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         private static string SqlLiteral(string? value) => "'" + (value ?? "").Trim().Replace("'", "''") + "'";
         private static string SqlUnicodeLiteral(string? value) => "N'" + (value ?? "").Replace("'", "''") + "'";
         private static string SqlNullableLiteral(string? value) => string.IsNullOrWhiteSpace(value) ? "NULL" : SqlUnicodeLiteral(value);
